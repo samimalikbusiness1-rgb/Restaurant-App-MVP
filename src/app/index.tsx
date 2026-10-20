@@ -1,4 +1,5 @@
-import { useState } from "react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useEffect, useState } from "react";
 import {
   Alert,
   Image,
@@ -423,11 +424,66 @@ type CartItem = {
 };
 
 export default function Index() {
+  const API_URL = "http://192.168.100.84:5000/api";
+
+  const [menuItems, setMenuItems] = useState<any[]>([]);
+  const [menuLoading, setMenuLoading] = useState(true);
+  useEffect(() => {
+    const fetchMenu = async () => {
+      try {
+        const response = await fetch(`${API_URL}/menu`);
+
+        if (!response.ok) {
+          throw new Error("Menu is not loading.");
+        }
+
+        const data = await response.json();
+        setMenuItems(data);
+      } catch (error) {
+        console.log("Menu API error:", error);
+        Alert.alert("Menu Error", "Menu is not loading.");
+      } finally {
+        setMenuLoading(false);
+      }
+    };
+
+    fetchMenu();
+  }, []);
   const [screen, setScreen] = useState("welcome");
+  const [paymentMethod, setPaymentMethod] = useState("COD");
   const [adminScreen, setAdminScreen] = useState("dashboard");
 
   const [loginEmail, setLoginEmail] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
+  const [authToken, setAuthToken] = useState<string | null>(null);
+  const [currentUser, setCurrentUser] = useState<any>(null);
+  useEffect(() => {
+    const restoreLogin = async () => {
+      try {
+        const token = await AsyncStorage.getItem("authToken");
+        const savedUser = await AsyncStorage.getItem("currentUser");
+
+        if (token && savedUser) {
+          const user = JSON.parse(savedUser);
+
+          setAuthToken(token);
+          setCurrentUser(user);
+          setSignupName(user.name);
+
+          if (user.role === "manager") {
+            setAdminScreen("dashboard");
+            setScreen("admin");
+          } else {
+            setScreen("home");
+          }
+        }
+      } catch (error) {
+        console.log("Restore login error:", error);
+      }
+    };
+
+    restoreLogin();
+  }, []);
 
   const [signupName, setSignupName] = useState("");
   const [signupEmail, setSignupEmail] = useState("");
@@ -435,6 +491,11 @@ export default function Index() {
   const [editName, setEditName] = useState("");
   const [editEmail, setEditEmail] = useState("");
   const [darkMode, setDarkMode] = useState(false);
+  const [tableStatuses, setTableStatuses] = useState<
+    { tableNumber: number; seats: number; isAvailable: boolean }[]
+  >([]);
+
+  const [tablesLoading, setTablesLoading] = useState(false);
 
   const [search, setSearch] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("All Menu");
@@ -444,10 +505,15 @@ export default function Index() {
   const [discount, setDiscount] = useState(0);
   const [favorites, setFavorites] = useState<string[]>([]);
   const [orders, setOrders] = useState<any[]>([]);
+  const [orderPhone, setOrderPhone] = useState("");
+  const [orderAddress, setOrderAddress] = useState("");
+  const [placingOrder, setPlacingOrder] = useState(false);
   const [orderStatus, setOrderStatus] = useState("Confirmed");
   const [trackingStep, setTrackingStep] = useState(1);
   const [reserved, setReserved] = useState(false);
   const [selectedTable, setSelectedTable] = useState<number | null>(null);
+  const [tableAvailability, setTableAvailability] = useState<any[]>([]);
+  const [loadingTables, setLoadingTables] = useState(false);
   const [selectedDate, setSelectedDate] = useState("4 Oct 2026");
   const reservationDates = [
     "4 Oct 2026",
@@ -524,8 +590,48 @@ export default function Index() {
   const [selectedTime, setSelectedTime] = useState<string | null>(null);
   const [showTables, setShowTables] = useState(false);
   const [reservedTable, setReservedTable] = useState<number | null>(null);
+  const [cancellingReservation, setCancellingReservation] = useState(false);
   const [reservedTime, setReservedTime] = useState<string | null>(null);
   const [reservedDate, setReservedDate] = useState<string | null>(null);
+  const [reservedGuests, setReservedGuests] = useState<string>("2");
+  const fetchTableAvailability = async (
+    date: string,
+    time: string,
+    guestValue: string,
+  ) => {
+    if (!date || !time || !guestValue || Number(guestValue) < 1) {
+      setTableAvailability([]);
+      return;
+    }
+
+    try {
+      setLoadingTables(true);
+
+      const response = await fetch(
+        `http://192.168.100.84:5000/api/reservations/availability?date=${encodeURIComponent(date)}&time=${encodeURIComponent(time)}&guests=${encodeURIComponent(guestValue)}`,
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || "Availability could not be loaded");
+      }
+
+      setTableAvailability(
+        (data.tables || data.availableTables || []).map((table: any) => ({
+          ...table,
+          isManagerAvailable: table.isManagerAvailable !== false,
+        })),
+      );
+      setSelectedTable(null);
+    } catch (error) {
+      console.log("Availability error:", error);
+      Alert.alert("Error", "Table availability load nahi hui.");
+      setTableAvailability([]);
+    } finally {
+      setLoadingTables(false);
+    }
+  };
 
   const tables = [
     { id: 1, name: "Table 1", seats: 2 },
@@ -548,6 +654,139 @@ export default function Index() {
   const [reservationDate, setReservationDate] = useState("");
   const [reservationTime, setReservationTime] = useState("");
   const [guests, setGuests] = useState("2");
+  const handleLogin = async () => {
+    if (!loginEmail.trim() || !loginPassword) {
+      Alert.alert("Missing Information", "Please enter email and password.");
+      return;
+    }
+
+    try {
+      const response = await fetch(`${API_URL}/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: loginEmail.trim().toLowerCase(),
+          password: loginPassword,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || "Login failed");
+      }
+
+      setAuthToken(data.token);
+      setCurrentUser(data.user);
+      await AsyncStorage.setItem("authToken", data.token);
+      await AsyncStorage.setItem("currentUser", JSON.stringify(data.user));
+      setSignupName(data.user.name);
+
+      if (data.user.role === "manager") {
+        setAdminScreen("dashboard");
+        setScreen("admin");
+      } else {
+        setScreen("home");
+      }
+    } catch (error) {
+      Alert.alert(
+        "Login Failed",
+        error instanceof Error ? error.message : "Please try again.",
+      );
+    }
+  };
+
+  const handleSignup = async () => {
+    if (!signupName.trim() || !signupEmail.trim() || !signupPassword) {
+      Alert.alert("Missing Information", "Please fill all fields.");
+      return;
+    }
+
+    if (signupPassword.length < 8) {
+      Alert.alert(
+        "Password Too Short",
+        "Password must be at least 8 characters.",
+      );
+      return;
+    }
+
+    try {
+      const response = await fetch(`${API_URL}/auth/register`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          name: signupName.trim(),
+          email: signupEmail.trim().toLowerCase(),
+          password: signupPassword,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || "Signup failed");
+      }
+
+      setAuthToken(data.token);
+      setCurrentUser(data.user);
+      setSignupName(data.user.name);
+
+      await AsyncStorage.setItem("authToken", data.token);
+      await AsyncStorage.setItem("currentUser", JSON.stringify(data.user));
+
+      setSignupPassword("");
+      setScreen("home");
+
+      Alert.alert(
+        "Welcome to Bite Club!",
+        "Your account has been created successfully.",
+      );
+    } catch (error) {
+      Alert.alert(
+        "Signup Failed",
+        error instanceof Error ? error.message : "Please try again.",
+      );
+    }
+  };
+
+  const fetchManagerOrders = async () => {
+    if (!authToken) return;
+
+    try {
+      const response = await fetch(`${API_URL}/orders`, {
+        headers: {
+          Authorization: `Bearer ${authToken}`,
+        },
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || "Orders could not be loaded");
+      }
+
+      const savedOrders = Array.isArray(data) ? data : data.orders || [];
+
+      setOrders(
+        savedOrders.map((order: any) => ({
+          id: order._id,
+          items: order.items || [],
+          total: order.total || 0,
+          date: order.createdAt
+            ? new Date(order.createdAt).toLocaleDateString()
+            : "",
+          status: order.status,
+        })),
+      );
+    } catch (error) {
+      Alert.alert(
+        "Orders Error",
+        error instanceof Error ? error.message : "Please try again.",
+      );
+    }
+  };
 
   const addToCart = (food: any) => {
     setCart((oldCart) => {
@@ -622,6 +861,142 @@ export default function Index() {
 
   const finalTotal = subtotal - discountAmount;
 
+  const placeOrder = async () => {
+    if (!signupName.trim()) {
+      Alert.alert(
+        "Name Required",
+        "Please enter your name in your profile/signup.",
+      );
+      return;
+    }
+
+    if (!orderPhone.trim() || !orderAddress.trim()) {
+      Alert.alert(
+        "Details Required",
+        "Please enter your phone number and delivery address.",
+      );
+      return;
+    }
+
+    if (cart.length === 0) {
+      Alert.alert("Empty Cart", "Please add food to your cart first.");
+      return;
+    }
+
+    setPlacingOrder(true);
+
+    try {
+      const response = await fetch("http://192.168.100.84:5000/api/orders", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${authToken}`,
+        },
+        body: JSON.stringify({
+          customerName: signupName.trim(),
+          phone: orderPhone.trim(),
+          address: orderAddress.trim(),
+
+          items: cart.map((item) => {
+            const dbItem = menuItems.find(
+              (menu) =>
+                menu.name.trim().toLowerCase() ===
+                item.name.trim().toLowerCase(),
+            );
+
+            if (!dbItem?._id) {
+              throw new Error(`Food item not found in database: ${item.name}`);
+            }
+
+            return {
+              menuItem: dbItem._id,
+              quantity: item.quantity,
+            };
+          }),
+
+          paymentMethod: paymentMethod,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || "Could not place order");
+      }
+
+      const savedOrder = {
+        id: data.order._id,
+        items: cart.map((item) => ({ ...item })),
+        total: data.order.total,
+        date: new Date(data.order.createdAt).toLocaleDateString(),
+        status: data.order.status,
+      };
+
+      setOrders((oldOrders) => [savedOrder, ...oldOrders]);
+      setTrackingStep(1);
+
+      Alert.alert(
+        "Order Confirmed",
+        "Your order has been saved successfully!",
+        [
+          {
+            text: "OK",
+            onPress: () => {
+              setCart([]);
+              setScreen("orders");
+            },
+          },
+        ],
+      );
+    } catch (error) {
+      Alert.alert(
+        "Order Failed",
+        error instanceof Error ? error.message : "Please try again.",
+      );
+    } finally {
+      setPlacingOrder(false);
+    }
+  };
+
+  useEffect(() => {
+    if (currentUser?.role === "manager" && authToken) {
+      fetchManagerOrders();
+    }
+  }, [currentUser, authToken]);
+
+  const cancelOrder = async (orderId: string) => {
+    try {
+      const response = await fetch(
+        `http://192.168.100.84:5000/api/orders/${orderId}/cancel`,
+        {
+          method: "PATCH",
+          headers: {
+            Authorization: `Bearer ${authToken}`,
+          },
+        },
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        Alert.alert("Cancel Failed", data.message || "Please try again.");
+        return;
+      }
+
+      setOrders((oldOrders) =>
+        oldOrders.map((order) =>
+          order.id === orderId || order._id === orderId
+            ? { ...order, status: "Cancelled" }
+            : order,
+        ),
+      );
+
+      Alert.alert("Success", "Your order has been cancelled.");
+    } catch (error) {
+      Alert.alert("Error", "Could not connect to the server.");
+    }
+  };
+
   // =========================
   // WELCOME SCREEN
   // =========================
@@ -690,25 +1065,7 @@ export default function Index() {
             secureTextEntry
           />
 
-          <TouchableOpacity
-            style={styles.loginButton}
-            onPress={() => {
-              if (!loginEmail || !loginPassword) {
-                Alert.alert(
-                  "Missing Information",
-                  "Please enter email and password.",
-                );
-                return;
-              }
-
-              if (loginEmail === "manager@biteclub.com") {
-                setAdminScreen("dashboard");
-                setScreen("admin");
-              } else {
-                setScreen("home");
-              }
-            }}
-          >
+          <TouchableOpacity style={styles.loginButton} onPress={handleLogin}>
             <Text style={styles.buttonText}>LOGIN</Text>
           </TouchableOpacity>
 
@@ -755,6 +1112,7 @@ export default function Index() {
             placeholderTextColor="#888"
             value={signupName}
             onChangeText={setSignupName}
+            autoCapitalize="words"
           />
 
           <TextInput
@@ -769,29 +1127,15 @@ export default function Index() {
 
           <TextInput
             style={styles.input}
-            placeholder="Password"
+            placeholder="Password (minimum 8 characters)"
             placeholderTextColor="#888"
             value={signupPassword}
             onChangeText={setSignupPassword}
             secureTextEntry
+            autoCapitalize="none"
           />
 
-          <TouchableOpacity
-            style={styles.loginButton}
-            onPress={() => {
-              if (!signupName || !signupEmail || !signupPassword) {
-                Alert.alert("Missing Information", "Please fill all fields.");
-                return;
-              }
-
-              Alert.alert("Account Created", "Your account has been created!", [
-                {
-                  text: "OK",
-                  onPress: () => setScreen("login"),
-                },
-              ]);
-            }}
-          >
+          <TouchableOpacity style={styles.loginButton} onPress={handleSignup}>
             <Text style={styles.buttonText}>CREATE ACCOUNT</Text>
           </TouchableOpacity>
 
@@ -847,7 +1191,7 @@ export default function Index() {
                 darkMode && { color: "#FFFFFF" },
               ]}
             >
-              {reserved ? "Table Reserved ✓" : "Reserve a Table"}
+              {reserved ? "Reserve a Table" : "Reserve a Table"}
             </Text>
 
             <Text
@@ -894,7 +1238,11 @@ export default function Index() {
                     setSelectedDate(date);
                     setReservationDate(date);
                     setSelectedTime(null);
+                    setReservationTime("");
                     setSelectedTable(null);
+                    setTableAvailability([]);
+                    setShowTables(false);
+                    setReserved(false);
                   }}
                 >
                   <Text
@@ -940,6 +1288,9 @@ export default function Index() {
                   setReservationTime("12:00 PM");
                   setShowTables(true);
                   setSelectedTable(null);
+                  setReserved(false);
+
+                  fetchTableAvailability(selectedDate, "12:00 PM", guests);
                 }}
               >
                 <Text
@@ -966,6 +1317,8 @@ export default function Index() {
                   setReservationTime("1:00 PM");
                   setShowTables(true);
                   setSelectedTable(null);
+                  setReserved(false);
+                  fetchTableAvailability(selectedDate, "1:00 PM", guests);
                 }}
               >
                 <Text
@@ -992,6 +1345,8 @@ export default function Index() {
                   setReservationTime("2:00 PM");
                   setShowTables(true);
                   setSelectedTable(null);
+                  setReserved(false);
+                  fetchTableAvailability(selectedDate, "2:00 PM", guests);
                 }}
               >
                 <Text
@@ -1018,6 +1373,8 @@ export default function Index() {
                   setReservationTime("6:00 PM");
                   setShowTables(true);
                   setSelectedTable(null);
+                  setReserved(false);
+                  fetchTableAvailability(selectedDate, "6:00 PM", guests);
                 }}
               >
                 <Text
@@ -1043,6 +1400,8 @@ export default function Index() {
                   setReservationTime("7:00 PM");
                   setShowTables(true);
                   setSelectedTable(null);
+                  setReserved(false);
+                  fetchTableAvailability(selectedDate, "7:00 PM", guests);
                 }}
               >
                 <Text
@@ -1068,6 +1427,8 @@ export default function Index() {
                   setReservationTime("8:00 PM");
                   setShowTables(true);
                   setSelectedTable(null);
+                  setReserved(false);
+                  fetchTableAvailability(selectedDate, "8:00 PM", guests);
                 }}
               >
                 <Text
@@ -1091,6 +1452,10 @@ export default function Index() {
                 onPress={() => {
                   setSelectedTime("9:00 PM");
                   setReservationTime("9:00 PM");
+                  setShowTables(true);
+                  setSelectedTable(null);
+                  setReserved(false);
+                  fetchTableAvailability(selectedDate, "9:00 PM", guests);
                 }}
               >
                 <Text
@@ -1117,53 +1482,101 @@ export default function Index() {
                   Available Tables
                 </Text>
 
-                <View style={{ gap: 10 }}>
-                  {(selectedTime === "12:00 PM"
-                    ? [1, 3, 5]
-                    : selectedTime === "1:00 PM"
-                      ? [1, 2, 4, 5, 6]
-                      : selectedTime === "2:00 PM"
-                        ? [1, 3]
-                        : selectedTime === "6:00 PM"
-                          ? [1, 2, 3, 4, 5, 6]
-                          : selectedTime === "7:00 PM"
-                            ? [1, 2, 4, 5]
-                            : selectedTime === "8:00 PM"
-                              ? [3, 5]
-                              : []
-                  ).map((table) => (
-                    <TouchableOpacity
-                      key={table}
-                      style={{
-                        padding: 15,
-                        borderWidth: 1,
-                        borderColor:
-                          selectedTable === table
-                            ? "#FF6B35"
-                            : darkMode
-                              ? "#444444"
-                              : "#ddd",
-                        borderRadius: 10,
-                        backgroundColor:
-                          selectedTable === table
-                            ? "#FFF5EF"
-                            : darkMode
-                              ? "#2A2A2A"
-                              : "#fff",
-                      }}
-                      onPress={() => setSelectedTable(table)}
-                    >
-                      <Text
-                        style={{
-                          fontSize: 16,
-                          fontWeight: "bold",
-                          color: darkMode ? "#FFFFFF" : "#000000",
-                        }}
-                      >
-                        Table {table}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
+                <View
+                  style={{
+                    flexDirection: "row",
+                    flexWrap: "wrap",
+                    justifyContent: "space-between",
+                    gap: 10,
+                  }}
+                >
+                  {loadingTables ? (
+                    <Text style={{ color: darkMode ? "#FFFFFF" : "#000000" }}>
+                      Checking availability...
+                    </Text>
+                  ) : (
+                    tableAvailability.map((table) => {
+                      const booked = table.isBooked;
+                      const suitable = table.suitableForGuests;
+                      const managerUnavailable =
+                        table.isManagerAvailable === false;
+                      const isSelected = selectedTable === table.tableNumber;
+
+                      return (
+                        <TouchableOpacity
+                          key={table.tableNumber}
+                          disabled={booked || managerUnavailable || !suitable}
+                          style={{
+                            width: "48%",
+                            padding: 15,
+                            borderWidth: 1,
+                            borderColor:
+                              booked || managerUnavailable
+                                ? "#DC2626"
+                                : isSelected
+                                  ? "#FF6B35"
+                                  : darkMode
+                                    ? "#444444"
+                                    : "#DDDDDD",
+                            borderRadius: 10,
+                            backgroundColor:
+                              booked || managerUnavailable
+                                ? darkMode
+                                  ? "#452020"
+                                  : "#FEE2E2"
+                                : isSelected
+                                  ? darkMode
+                                    ? "#493025"
+                                    : "#FFF5EF"
+                                  : darkMode
+                                    ? "#2A2A2A"
+                                    : "#FFFFFF",
+                            opacity: !suitable && !booked ? 0.5 : 1,
+                          }}
+                          onPress={() => setSelectedTable(table.tableNumber)}
+                        >
+                          <Text
+                            style={{
+                              fontSize: 16,
+                              fontWeight: "bold",
+                              color: darkMode ? "#FFFFFF" : "#000000",
+                            }}
+                          >
+                            Table {table.tableNumber}
+                          </Text>
+
+                          <Text
+                            style={{
+                              marginTop: 5,
+                              fontSize: 13,
+                              color: booked
+                                ? "#DC2626"
+                                : darkMode
+                                  ? "#CCCCCC"
+                                  : "#666666",
+                              fontWeight: booked ? "bold" : "normal",
+                            }}
+                          >
+                            {booked
+                              ? "Booked"
+                              : managerUnavailable
+                                ? "Unavailable"
+                                : !suitable
+                                  ? `Needs ${table.seats} seats`
+                                  : isSelected
+                                    ? "Selected ✓"
+                                    : `${table.seats} seats · Available`}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })
+                  )}
+
+                  {!loadingTables && tableAvailability.length === 0 && (
+                    <Text style={{ color: darkMode ? "#FFFFFF" : "#666666" }}>
+                      No table information available. Please select a time.
+                    </Text>
+                  )}
                 </View>
               </View>
             )}
@@ -1207,7 +1620,7 @@ export default function Index() {
 
             <TouchableOpacity
               style={styles.reserveButton}
-              onPress={() => {
+              onPress={async () => {
                 if (
                   !selectedTable ||
                   !selectedTime ||
@@ -1216,99 +1629,80 @@ export default function Index() {
                 ) {
                   Alert.alert(
                     "Missing Information",
-                    "Please select a table, time and fill all reservation details.",
+                    "Please select a date, time, table and enter the number of guests.",
+                  );
+                  return;
+                }
+
+                const guestCount = Number(guests);
+
+                if (
+                  !Number.isInteger(guestCount) ||
+                  guestCount < 1 ||
+                  guestCount > 6
+                ) {
+                  Alert.alert(
+                    "Invalid Guests",
+                    "Please enter between 1 and 6 guests.",
+                  );
+                  return;
+                }
+
+                try {
+                  const response = await fetch(
+                    "http://192.168.100.84:5000/api/reservations",
+                    {
+                      method: "POST",
+                      headers: {
+                        "Content-Type": "application/json",
+                      },
+                      body: JSON.stringify({
+                        customerName: signupName || "Bite Club User",
+                        date: reservationDate,
+                        time: selectedTime,
+                        guests: guestCount,
+                        tableNumber: selectedTable,
+                      }),
+                    },
                   );
 
-                  return;
+                  const data = await response.json();
+
+                  if (!response.ok) {
+                    Alert.alert(
+                      "Reservation Failed",
+                      data.message || "Please try another table or time.",
+                    );
+                    return;
+                  }
+
+                  setReserved(true);
+                  setReservedTable(selectedTable);
+                  setReservedTime(selectedTime);
+                  setReservedDate(reservationDate);
+                  setReservedGuests(String(guestCount));
+                  await fetchTableAvailability(
+                    reservationDate,
+                    selectedTime,
+                    guests,
+                  );
+
+                  Alert.alert(
+                    "Reservation Confirmed",
+                    `Table ${selectedTable} has been reserved for ${guestCount} guests at ${selectedTime}.`,
+                  );
+                } catch (error) {
+                  Alert.alert(
+                    "Connection Error",
+                    "Could not connect to the server. Please check that your backend is running.",
+                  );
                 }
-
-                if (!selectedTime) {
-                  Alert.alert("Select Time", "Please select a time first.");
-                  return;
-                }
-
-                if (!selectedTable) {
-                  Alert.alert("Select Table", "Please select a table first.");
-                  return;
-                }
-
-                setReserved(true);
-
-                setReservedTable(selectedTable);
-                setReservedTime(selectedTime);
-                setReservedDate(reservationDate);
-
-                Alert.alert(
-                  "Reservation Confirmed",
-                  `Table ${selectedTable} has been reserved for ${guests} guests at ${selectedTime}.`,
-                );
               }}
             >
               <Text style={styles.buttonText}>
                 {reserved ? "RESERVED ✓" : "RESERVE TABLE"}
               </Text>
             </TouchableOpacity>
-
-            {/* =========================
-              RESERVATION DETAILS
-          ========================= */}
-
-            {reserved && (
-              <View style={styles.reservationSuccess}>
-                <Text style={styles.successTitle}>Reservation Details</Text>
-
-                <Text style={styles.successText}>
-                  Table: Table {selectedTable}
-                </Text>
-
-                <Text style={styles.successText}>Date: {reservationDate}</Text>
-
-                <Text style={styles.successText}>Time: {selectedTime}</Text>
-
-                <Text style={styles.successText}>Guests: {guests}</Text>
-
-                <Text style={styles.successAvailable}>🟢 Table Confirmed</Text>
-              </View>
-            )}
-
-            {/* =========================
-              CANCEL RESERVATION
-          ========================= */}
-
-            {reserved && (
-              <TouchableOpacity
-                style={styles.cancelReservationButton}
-                onPress={() => {
-                  Alert.alert(
-                    "Cancel Reservation",
-                    "Are you sure you want to cancel your reservation?",
-                    [
-                      {
-                        text: "No",
-                        style: "cancel",
-                      },
-
-                      {
-                        text: "Yes, Cancel",
-
-                        onPress: () => {
-                          setReserved(false);
-                          setReservationDate("");
-                          setReservationTime("");
-                          setGuests("2");
-                          setSelectedTable(null);
-                          setSelectedTime(null);
-                        },
-                      },
-                    ],
-                  );
-                }}
-              >
-                <Text style={styles.cancelReservationText}>
-                  CANCEL RESERVATION
-                </Text>
-              </TouchableOpacity>
-            )}
           </View>
         </ScrollView>
 
@@ -1329,7 +1723,25 @@ export default function Index() {
   // =========================
 
   if (screen === "favorites") {
-    const favoriteFood = FOOD.filter((item) => favorites.includes(item.id));
+    const favoriteFood = FOOD.map((food) => {
+      const dbItem = menuItems.find(
+        (item) => item.name.toLowerCase() === food.name.toLowerCase(),
+      );
+
+      return {
+        ...food,
+        id: String(dbItem?._id || food.id),
+        price: dbItem?.price ?? food.price,
+        image:
+          dbItem?.image ||
+          food.image ||
+          (food.name.toLowerCase().includes("cold coffee")
+            ? "https://images.unsplash.com/photo-1461023058943-07fcbe16d735?w=500"
+            : food.name.toLowerCase().includes("crispy chicken")
+              ? "https://images.unsplash.com/photo-1626082927389-6cd097cdc6ec?w=500"
+              : ""),
+      };
+    }).filter((item) => favorites.includes(item.id));
 
     return (
       <SafeAreaView
@@ -1612,7 +2024,15 @@ export default function Index() {
                 darkMode && { color: "#FFFFFF" },
               ]}
             >
-              {trackingStep === 1 && "Order Confirmed ✓"}
+              <Text
+                style={[
+                  trackingStep >= 1
+                    ? [styles.timelineActive, { color: "#90EE90" }]
+                    : styles.timelinePending,
+                ]}
+              >
+                {trackingStep >= 1 ? "✦" : "○"} Order Confirmed
+              </Text>
               {trackingStep === 2 && "Preparing Your Food 🍳"}
               {trackingStep === 3 && "Out for Delivery 🚗"}
               {trackingStep === 4 && "Order Delivered ✓"}
@@ -1661,7 +2081,7 @@ export default function Index() {
               </Text>
             </View>
 
-            {loginEmail === "manager@biteclub.com" && (
+            {currentUser?.role === "manager" && (
               <TouchableOpacity
                 style={styles.trackButton}
                 onPress={() => {
@@ -1796,67 +2216,49 @@ export default function Index() {
                   Date: {order.date}
                 </Text>
 
-                <TouchableOpacity
-                  style={styles.trackButton}
-                  onPress={() => setScreen("tracking")}
-                >
-                  <Text style={styles.trackButtonText}>TRACK ORDER</Text>
-                </TouchableOpacity>
                 <View style={styles.statusBadge}>
                   <Text style={styles.statusBadgeText}>{order.status}</Text>
                 </View>
 
-                <View
-                  style={[
-                    styles.trackingBox,
-                    darkMode && { backgroundColor: "#2A2A2A" },
-                  ]}
-                >
-                  <Text
+                {order.status === "Pending" && (
+                  <TouchableOpacity
                     style={[
-                      styles.trackingTitle,
-                      darkMode && { color: "#FFFFFF" },
+                      styles.trackButton,
+                      {
+                        backgroundColor: "#D93636",
+                        marginTop: 10,
+                      },
                     ]}
+                    onPress={() =>
+                      Alert.alert(
+                        "Cancel Order",
+                        "Are you sure you want to cancel this order?",
+                        [
+                          {
+                            text: "Keep Order",
+                            style: "cancel",
+                          },
+                          {
+                            text: "Yes, Cancel",
+                            style: "destructive",
+                            onPress: () => cancelOrder(order.id),
+                          },
+                        ],
+                      )
+                    }
                   >
-                    Order Tracking
-                  </Text>
+                    <Text style={styles.trackButtonText}>CANCEL ORDER</Text>
+                  </TouchableOpacity>
+                )}
 
-                  <Text
+                {order.status !== "Cancelled" && (
+                  <View
                     style={[
-                      styles.trackingStep,
-                      darkMode && { color: "#AAAAAA" },
+                      styles.trackingBox,
+                      darkMode && { backgroundColor: "#2A2A2A" },
                     ]}
-                  >
-                    ✓ Order Confirmed
-                  </Text>
-
-                  <Text
-                    style={[
-                      styles.trackingStep,
-                      darkMode && { color: "#AAAAAA" },
-                    ]}
-                  >
-                    ✓ Order Confirmed
-                  </Text>
-
-                  <Text
-                    style={[
-                      styles.trackingStep,
-                      darkMode && { color: "#AAAAAA" },
-                    ]}
-                  >
-                    ✓ Order Confirmed
-                  </Text>
-
-                  <Text
-                    style={[
-                      styles.trackingStep,
-                      darkMode && { color: "#AAAAAA" },
-                    ]}
-                  >
-                    ✓ Order Confirmed
-                  </Text>
-                </View>
+                  ></View>
+                )}
 
                 <Text
                   style={[styles.orderTotal, darkMode && { color: "#FFFFFF" }]}
@@ -1886,6 +2288,65 @@ export default function Index() {
       </SafeAreaView>
     );
   }
+
+  const loadTableStatuses = async () => {
+    try {
+      setTablesLoading(true);
+
+      const response = await fetch(
+        "http://192.168.100.84:5000/api/reservations/tables/status",
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        Alert.alert("Error", data.message || "Could not load tables.");
+        return;
+      }
+
+      setTableStatuses(Array.isArray(data) ? data : data.tables || []);
+    } catch (error) {
+      Alert.alert("Connection Error", "Could not connect to the server.");
+    } finally {
+      setTablesLoading(false);
+    }
+  };
+
+  const toggleTableAvailability = async (
+    tableNumber: number,
+    isAvailable: boolean,
+  ) => {
+    try {
+      const response = await fetch(
+        `http://192.168.100.84:5000/api/reservations/tables/${tableNumber}/status`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ isAvailable }),
+        },
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        Alert.alert("Error", data.message || "Could not update table.");
+        return;
+      }
+
+      setTableStatuses((previous) =>
+        previous.map((table) =>
+          table.tableNumber === tableNumber ? { ...table, isAvailable } : table,
+        ),
+      );
+
+      Alert.alert(
+        "Success",
+        `Table ${tableNumber} is now ${isAvailable ? "Available" : "Unavailable"}.`,
+      );
+    } catch (error) {
+      Alert.alert("Connection Error", "Could not connect to the server.");
+    }
+  };
 
   if (screen === "admin") {
     const totalOrders = orders.length;
@@ -2010,6 +2471,95 @@ export default function Index() {
 
               <Text style={styles.dashboardLabel}>Reservations</Text>
             </View>
+          </View>
+
+          {/* MANAGE TABLES */}
+          <View
+            style={[
+              styles.dashboardSummary,
+              darkMode && { backgroundColor: "#1E1E1E" },
+            ]}
+          >
+            <Text
+              style={[
+                styles.dashboardSummaryTitle,
+                darkMode && { color: "#FFFFFF" },
+              ]}
+            >
+              🪑 Manage Tables
+            </Text>
+
+            <Text
+              style={[
+                styles.dashboardOrderStatus,
+                darkMode && { color: "#AAAAAA" },
+                { marginBottom: 15 },
+              ]}
+            >
+              Control which tables customers can reserve.
+            </Text>
+
+            <TouchableOpacity
+              style={styles.trackButton}
+              onPress={loadTableStatuses}
+            >
+              <Text style={styles.trackButtonText}>
+                {tablesLoading ? "LOADING..." : "REFRESH TABLES"}
+              </Text>
+            </TouchableOpacity>
+
+            {tableStatuses.map((table) => (
+              <View
+                key={table.tableNumber}
+                style={[
+                  styles.dashboardOrder,
+                  { alignItems: "center", flexWrap: "wrap" },
+                ]}
+              >
+                <View style={{ flex: 1 }}>
+                  <Text
+                    style={[
+                      styles.dashboardOrderTitle,
+                      darkMode && { color: "#FFFFFF" },
+                    ]}
+                  >
+                    Table {table.tableNumber}
+                  </Text>
+
+                  <Text
+                    style={[
+                      styles.dashboardOrderStatus,
+                      {
+                        color: table.isAvailable ? "#16A34A" : "#DC2626",
+                      },
+                    ]}
+                  >
+                    {table.seats} seats ·{" "}
+                    {table.isAvailable ? "Available" : "Unavailable"}
+                  </Text>
+                </View>
+
+                <TouchableOpacity
+                  style={[
+                    styles.trackButton,
+                    {
+                      backgroundColor: table.isAvailable ? "#DC2626" : "green",
+                      marginTop: 5,
+                    },
+                  ]}
+                  onPress={() =>
+                    toggleTableAvailability(
+                      table.tableNumber,
+                      !table.isAvailable,
+                    )
+                  }
+                >
+                  <Text style={styles.trackButtonText}>
+                    {table.isAvailable ? "MAKE UNAVAILABLE" : "MAKE AVAILABLE"}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            ))}
           </View>
 
           {/* MENU OVERVIEW */}
@@ -2204,7 +2754,6 @@ export default function Index() {
                     >
                       Order #{order.id.slice(-5)}
                     </Text>
-
                     <Text
                       style={[
                         styles.dashboardOrderStatus,
@@ -2213,7 +2762,6 @@ export default function Index() {
                     >
                       Status: {order.status}
                     </Text>
-
                     <Text
                       style={[
                         styles.dashboardOrderStatus,
@@ -2222,41 +2770,89 @@ export default function Index() {
                     >
                       Items: {order.items.length}
                     </Text>
-
                     {/* UPDATE STATUS */}
-                    <TouchableOpacity
-                      style={styles.trackButton}
-                      onPress={() => {
-                        const statusNames = [
-                          "Confirmed",
-                          "Preparing",
-                          "Out for Delivery",
-                          "Delivered",
-                        ];
+                    ```tsx
+                    {order.status !== "Cancelled" && (
+                      <TouchableOpacity
+                        style={styles.trackButton}
+                        disabled={order.status === "Served"}
+                        onPress={async () => {
+                          const statusNames = [
+                            "Pending",
+                            "Preparing",
+                            "Ready",
+                            "Served",
+                          ];
 
-                        const currentIndex = statusNames.indexOf(order.status);
-
-                        if (currentIndex < 3) {
-                          const nextStatus = statusNames[currentIndex + 1];
-
-                          setOrders((oldOrders) =>
-                            oldOrders.map((item) =>
-                              item.id === order.id
-                                ? { ...item, status: nextStatus }
-                                : item,
-                            ),
+                          const currentIndex = statusNames.indexOf(
+                            order.status,
                           );
 
-                          setTrackingStep(currentIndex + 2);
-                        }
-                      }}
-                    >
-                      <Text style={styles.trackButtonText}>
-                        {order.status === "Delivered"
-                          ? "ORDER DELIVERED ✓"
-                          : "UPDATE STATUS"}
-                      </Text>
-                    </TouchableOpacity>
+                          if (
+                            currentIndex < 0 ||
+                            currentIndex >= statusNames.length - 1
+                          ) {
+                            Alert.alert(
+                              "Notice",
+                              "Order status cannot be updated.",
+                            );
+                            return;
+                          }
+
+                          const nextStatus = statusNames[currentIndex + 1];
+
+                          try {
+                            const response = await fetch(
+                              `${API_URL}/orders/${order.id}/status`,
+                              {
+                                method: "PATCH",
+                                headers: {
+                                  "Content-Type": "application/json",
+                                  Authorization: `Bearer ${authToken}`,
+                                },
+                                body: JSON.stringify({ status: nextStatus }),
+                              },
+                            );
+
+                            const data = await response.json();
+
+                            if (!response.ok) {
+                              Alert.alert(
+                                "Update Failed",
+                                data.message ||
+                                  "Could not update order status.",
+                              );
+                              return;
+                            }
+
+                            setOrders((oldOrders) =>
+                              oldOrders.map((item) =>
+                                item.id === order.id
+                                  ? { ...item, status: data.order.status }
+                                  : item,
+                              ),
+                            );
+
+                            Alert.alert(
+                              "Success",
+                              `Order status: ${data.order.status}`,
+                            );
+                          } catch (error) {
+                            Alert.alert(
+                              "Error",
+                              "Server se connection nahi ho saka.",
+                            );
+                          }
+                        }}
+                      >
+                        <Text style={styles.trackButtonText}>
+                          {order.status === "Served"
+                            ? "ORDER Delivered ✓"
+                            : "UPDATE STATUS"}
+                        </Text>
+                      </TouchableOpacity>
+                    )}
+                    ```
                   </View>
 
                   <Text
@@ -2340,7 +2936,7 @@ export default function Index() {
     );
   }
 
-  if (screen === "profile") {
+  if (screen === "myReservation") {
     return (
       <SafeAreaView
         style={[
@@ -2349,7 +2945,197 @@ export default function Index() {
         ]}
       >
         <View style={styles.cartHeader}>
-          <TouchableOpacity onPress={() => setScreen("home")}>
+          <TouchableOpacity onPress={() => setScreen("profile")}>
+            <Text style={[styles.backArrow, darkMode && { color: "#FFFFFF" }]}>
+              ←
+            </Text>
+          </TouchableOpacity>
+
+          <Text style={[styles.cartTitle, darkMode && { color: "#FFFFFF" }]}>
+            My Reservation
+          </Text>
+
+          <View style={{ width: 30 }} />
+        </View>
+
+        <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 120 }}>
+          {reserved &&
+          reservedDate &&
+          reservedTime &&
+          reservedTable !== null ? (
+            <View
+              style={[
+                styles.reservationSuccess,
+                darkMode && { backgroundColor: "#1E1E1E" },
+              ]}
+            >
+              <Text style={styles.successTitle}>Reservation Details</Text>
+
+              <Text style={styles.successText}>
+                Name: {signupName || "Bite Club User"}
+              </Text>
+
+              <Text style={styles.successText}>
+                Table: Table {reservedTable}
+              </Text>
+
+              <Text style={styles.successText}>Date: {reservedDate}</Text>
+
+              <Text style={styles.successText}>Time: {reservedTime}</Text>
+
+              <Text style={styles.successText}>Guests: {reservedGuests}</Text>
+
+              <Text style={styles.successAvailable}>
+                🟢 Reservation Confirmed
+              </Text>
+
+              <TouchableOpacity
+                style={[
+                  styles.cancelReservationButton,
+                  cancellingReservation && { opacity: 0.6 },
+                ]}
+                disabled={cancellingReservation}
+                onPress={() => {
+                  Alert.alert(
+                    "Cancel Reservation",
+                    "Are you sure you want to cancel your reservation?",
+                    [
+                      { text: "No", style: "cancel" },
+                      {
+                        text: "Yes, Cancel",
+                        style: "destructive",
+                        onPress: async () => {
+                          if (
+                            !reservedDate ||
+                            !reservedTime ||
+                            reservedTable === null
+                          ) {
+                            Alert.alert(
+                              "Error",
+                              "Reservation details nahi milin.",
+                            );
+                            return;
+                          }
+
+                          try {
+                            setCancellingReservation(true);
+
+                            const response = await fetch(
+                              "http://192.168.100.84:5000/api/reservations/cancel",
+                              {
+                                method: "POST",
+                                headers: {
+                                  "Content-Type": "application/json",
+                                },
+                                body: JSON.stringify({
+                                  customerName: signupName || "Bite Club User",
+                                  date: reservedDate,
+                                  time: reservedTime,
+                                  tableNumber: reservedTable,
+                                }),
+                              },
+                            );
+
+                            const data = await response.json();
+
+                            if (!response.ok) {
+                              throw new Error(
+                                data.message || "Reservation cancel nahi hui.",
+                              );
+                            }
+
+                            setReserved(false);
+                            setReservationDate("");
+                            setReservationTime("");
+                            setGuests("2");
+                            setSelectedTable(null);
+                            setSelectedTime(null);
+                            setShowTables(false);
+                            setReservedTable(null);
+                            setReservedTime(null);
+                            setReservedDate(null);
+                            setTableAvailability([]);
+
+                            Alert.alert(
+                              "Reservation Cancelled",
+                              "Your reservation has been cancelled successfully.",
+                            );
+                          } catch (error) {
+                            Alert.alert(
+                              "Cancellation Failed",
+                              error instanceof Error
+                                ? error.message
+                                : "Please try again.",
+                            );
+                          } finally {
+                            setCancellingReservation(false);
+                          }
+                        },
+                      },
+                    ],
+                  );
+                }}
+              >
+                <Text style={styles.cancelReservationText}>
+                  {cancellingReservation
+                    ? "CANCELLING..."
+                    : "CANCEL RESERVATION"}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <View style={styles.emptyCart}>
+              <Text style={styles.emptyCartIcon}>🪑</Text>
+
+              <Text
+                style={[
+                  styles.emptyCartTitle,
+                  darkMode && { color: "#FFFFFF" },
+                ]}
+              >
+                No Active Reservation
+              </Text>
+
+              <Text
+                style={[styles.emptyCartText, darkMode && { color: "#AAAAAA" }]}
+              >
+                Your confirmed reservation will appear here.
+              </Text>
+
+              <TouchableOpacity
+                style={styles.loginButton}
+                onPress={() => setScreen("reservation")}
+              >
+                <Text style={styles.buttonText}>BOOK A TABLE</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        </ScrollView>
+
+        <BottomNav
+          screen={screen}
+          setScreen={setScreen}
+          cartCount={cartCount}
+          darkMode={darkMode}
+        />
+      </SafeAreaView>
+    );
+  }
+
+  if (screen === "profile") {
+    const isManager = currentUser?.role === "manager";
+
+    return (
+      <SafeAreaView
+        style={[
+          styles.homeContainer,
+          darkMode && { backgroundColor: "#111111" },
+        ]}
+      >
+        <View style={styles.cartHeader}>
+          <TouchableOpacity
+            onPress={() => setScreen(isManager ? "admin" : "home")}
+          >
             <Text style={styles.backArrow}></Text>
           </TouchableOpacity>
 
@@ -2362,10 +3148,7 @@ export default function Index() {
 
         <ScrollView
           showsVerticalScrollIndicator={false}
-          contentContainerStyle={{
-            padding: 20,
-            paddingBottom: 120,
-          }}
+          contentContainerStyle={{ padding: 20, paddingBottom: 120 }}
         >
           <View
             style={[
@@ -2388,11 +3171,19 @@ export default function Index() {
             <Text
               style={[styles.profileEmail, darkMode && { color: "#AAAAAA" }]}
             >
-              {signupEmail || "Welcome to Bite Club"}
+              {signupEmail || currentUser?.email || "Welcome to Bite Club"}
             </Text>
+
+            {isManager && (
+              <Text
+                style={{ color: "#FF6B35", marginTop: 8, fontWeight: "600" }}
+              >
+                Manager Account
+              </Text>
+            )}
           </View>
 
-          {loginEmail !== "manager@biteclub.com" && (
+          {!isManager && (
             <TouchableOpacity
               style={[
                 styles.profileOption,
@@ -2410,6 +3201,26 @@ export default function Index() {
               </Text>
             </TouchableOpacity>
           )}
+
+          {!isManager && (
+            <TouchableOpacity
+              style={[
+                styles.profileOption,
+                darkMode && { backgroundColor: "#1E1E1E" },
+              ]}
+              onPress={() => setScreen("myReservation")}
+            >
+              <Text
+                style={[
+                  styles.profileOptionText,
+                  darkMode && { color: "#FFFFFF" },
+                ]}
+              >
+                🪑 My Reservation
+              </Text>
+            </TouchableOpacity>
+          )}
+
           <TouchableOpacity
             style={[
               styles.profileOption,
@@ -2423,9 +3234,10 @@ export default function Index() {
                 darkMode && { color: "#FFFFFF" },
               ]}
             >
-              {darkMode ? "☀️  Light Mode" : "🌙  Dark Mode"}
+              {darkMode ? "☀️ Light Mode" : "🌙 Dark Mode"}
             </Text>
           </TouchableOpacity>
+
           <TouchableOpacity
             style={[
               styles.profileOption,
@@ -2433,7 +3245,7 @@ export default function Index() {
             ]}
             onPress={() => {
               setEditName(signupName);
-              setEditEmail(signupEmail);
+              setEditEmail(signupEmail || currentUser?.email || "");
               setScreen("editProfile");
             }}
           >
@@ -2447,7 +3259,7 @@ export default function Index() {
             </Text>
           </TouchableOpacity>
 
-          {loginEmail === "manager@biteclub.com" && (
+          {isManager && (
             <TouchableOpacity
               style={[
                 styles.profileOption,
@@ -2476,13 +3288,21 @@ export default function Index() {
             ]}
             onPress={() => {
               Alert.alert("Logout", "Are you sure you want to logout?", [
-                {
-                  text: "Cancel",
-                  style: "cancel",
-                },
+                { text: "Cancel", style: "cancel" },
                 {
                   text: "Logout",
-                  onPress: () => setScreen("login"),
+                  style: "destructive",
+                  onPress: async () => {
+                    await AsyncStorage.removeItem("authToken");
+                    await AsyncStorage.removeItem("currentUser");
+                    setAuthToken(null);
+                    setCurrentUser(null);
+                    setLoginEmail("");
+                    setLoginPassword("");
+                    setSignupName("");
+                    setSignupEmail("");
+                    setScreen("login");
+                  },
                 },
               ]);
             }}
@@ -2491,7 +3311,7 @@ export default function Index() {
           </TouchableOpacity>
         </ScrollView>
 
-        {loginEmail !== "manager@biteclub.com" && (
+        {!isManager && (
           <BottomNav
             screen={screen}
             setScreen={setScreen}
@@ -2609,99 +3429,156 @@ export default function Index() {
             </ScrollView>
 
             <View style={styles.checkoutBox}>
-              <View style={styles.promoBox}>
+              <ScrollView
+                showsVerticalScrollIndicator={true}
+                nestedScrollEnabled={true}
+                style={{ maxHeight: 350 }}
+                contentContainerStyle={{ paddingBottom: 15 }}
+                keyboardShouldPersistTaps="handled"
+              >
+                <View style={styles.promoBox}>
+                  <TextInput
+                    style={styles.promoInput}
+                    placeholder="Enter promo code"
+                    placeholderTextColor="#999"
+                    value={promoCode}
+                    onChangeText={setPromoCode}
+                    autoCapitalize="characters"
+                  />
+
+                  <TouchableOpacity
+                    style={styles.promoButton}
+                    onPress={() => {
+                      if (promoCode.trim().toUpperCase() === "BITE10") {
+                        setDiscount(10);
+                        Alert.alert(
+                          "Promo Applied",
+                          "10% discount applied successfully!",
+                        );
+                      } else {
+                        setDiscount(0);
+                        Alert.alert("Invalid Code", "Try promo code: BITE10");
+                      }
+                    }}
+                  >
+                    <Text style={styles.promoButtonText}>APPLY</Text>
+                  </TouchableOpacity>
+                </View>
+
                 <TextInput
-                  style={styles.promoInput}
-                  placeholder="Enter promo code"
+                  style={[styles.promoInput, { marginTop: 16 }]}
+                  placeholder="Enter phone number"
                   placeholderTextColor="#999"
-                  value={promoCode}
-                  onChangeText={setPromoCode}
-                  autoCapitalize="characters"
+                  value={orderPhone}
+                  onChangeText={setOrderPhone}
+                  keyboardType="phone-pad"
                 />
 
-                <TouchableOpacity
-                  style={styles.promoButton}
-                  onPress={() => {
-                    if (promoCode.trim().toUpperCase() === "BITE10") {
-                      setDiscount(10);
+                <TextInput
+                  style={[styles.promoInput, { marginTop: 10, minHeight: 80 }]}
+                  placeholder="Enter delivery address"
+                  placeholderTextColor="#999"
+                  value={orderAddress}
+                  onChangeText={setOrderAddress}
+                  multiline
+                />
 
-                      Alert.alert(
-                        "Promo Applied",
-                        "10% discount applied successfully!",
-                      );
-                    } else {
-                      setDiscount(0);
-
-                      Alert.alert("Invalid Code", "Try promo code: BITE10");
-                    }
-                  }}
+                <Text
+                  style={[
+                    styles.totalLabel,
+                    { marginTop: 16, marginBottom: 10, fontSize: 16 },
+                    darkMode && { color: "#FFFFFF" },
+                  ]}
                 >
-                  <Text style={styles.promoButtonText}>APPLY</Text>
-                </TouchableOpacity>
-              </View>
+                  Select Payment Method
+                </Text>
 
-              <View style={styles.totalRow}>
-                <Text style={styles.totalLabel}>Subtotal</Text>
+                {[
+                  { label: "Cash on Delivery", value: "COD", icon: "💵" },
+                  { label: "Debit / Credit Card", value: "Card", icon: "💳" },
+                  { label: "Easypaisa", value: "Easypaisa", icon: "📱" },
+                  { label: "JazzCash", value: "JazzCash", icon: "📲" },
+                ].map((method) => (
+                  <TouchableOpacity
+                    key={method.value}
+                    onPress={() => setPaymentMethod(method.value)}
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      padding: 10,
+                      marginBottom: 6,
+                      borderWidth: 1,
+                      borderColor:
+                        paymentMethod === method.value ? "#FF6B35" : "#CCCCCC",
+                      borderRadius: 10,
+                      backgroundColor:
+                        paymentMethod === method.value
+                          ? darkMode
+                            ? "#302017"
+                            : "#FFF3ED"
+                          : "transparent",
+                    }}
+                  >
+                    <Text style={{ fontSize: 18, marginRight: 10 }}>
+                      {method.icon}
+                    </Text>
 
-                <Text style={styles.totalValue}>Rs. {subtotal}</Text>
-              </View>
+                    <Text
+                      style={{
+                        flex: 1,
+                        color: darkMode ? "#FFFFFF" : "#111111",
+                      }}
+                    >
+                      {method.label}
+                    </Text>
 
-              {discount > 0 && (
+                    <Text style={{ color: "#FF6B35", fontWeight: "bold" }}>
+                      {paymentMethod === method.value ? "✓" : "○"}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+
                 <View style={styles.totalRow}>
-                  <Text style={styles.totalLabel}>Discount ({discount}%)</Text>
-
-                  <Text style={styles.discountText}>
-                    - Rs. {discountAmount}
-                  </Text>
+                  <Text style={styles.totalLabel}>Subtotal</Text>
+                  <Text style={styles.totalValue}>Rs. {subtotal}</Text>
                 </View>
-              )}
 
-              <View style={styles.totalRow}>
-                <Text style={styles.totalLabel}>Delivery</Text>
+                {discount > 0 && (
+                  <View style={styles.totalRow}>
+                    <Text style={styles.totalLabel}>
+                      Discount ({discount}%)
+                    </Text>
+                    <Text style={styles.discountText}>
+                      - Rs. {discountAmount}
+                    </Text>
+                  </View>
+                )}
 
-                <Text style={styles.freeText}>FREE</Text>
-              </View>
+                <View style={styles.totalRow}>
+                  <Text style={styles.totalLabel}>Delivery</Text>
+                  <Text style={styles.freeText}>FREE</Text>
+                </View>
 
-              <View style={styles.divider} />
+                <View style={styles.divider} />
 
-              <View style={styles.totalRow}>
-                <Text style={styles.grandTotalLabel}>Total</Text>
+                <View style={styles.totalRow}>
+                  <Text style={styles.grandTotalLabel}>Total</Text>
+                  <Text style={styles.grandTotal}>Rs. {finalTotal}</Text>
+                </View>
 
-                <Text style={styles.grandTotal}>Rs. {finalTotal}</Text>
-              </View>
-
-              <TouchableOpacity
-                style={styles.placeOrderButton}
-                onPress={() => {
-                  setTrackingStep(1);
-
-                  const newOrder = {
-                    id: Date.now().toString(),
-                    items: cart,
-                    total: finalTotal,
-                    date: new Date().toLocaleDateString(),
-                    status: orderStatus,
-                  };
-
-                  setOrders((oldOrders) => [...oldOrders, newOrder]);
-
-                  Alert.alert(
-                    "Order Confirmed",
-                    "Your order has been placed successfully!",
-                    [
-                      {
-                        text: "OK",
-                        onPress: () => {
-                          setCart([]);
-                          setScreen("home");
-                        },
-                      },
-                    ],
-                  );
-                }}
-              >
-                <Text style={styles.buttonText}>PLACE ORDER</Text>
-              </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.placeOrderButton,
+                    placingOrder && { opacity: 0.6 },
+                  ]}
+                  onPress={placeOrder}
+                  disabled={placingOrder}
+                >
+                  <Text style={styles.buttonText}>
+                    {placingOrder ? "PLACING ORDER..." : "PLACE ORDER"}
+                  </Text>
+                </TouchableOpacity>
+              </ScrollView>
             </View>
           </>
         )}
@@ -2721,7 +3598,26 @@ export default function Index() {
   // =========================
 
   if (screen === "home") {
-    const filteredFood = FOOD.filter((item) => {
+    const foodWithImages = FOOD.map((food) => {
+      const dbItem = menuItems.find(
+        (item) => item.name.toLowerCase() === food.name.toLowerCase(),
+      );
+
+      return {
+        ...food,
+        id: String(dbItem?._id || food.id),
+        price: dbItem?.price ?? food.price,
+        image:
+          dbItem?.image ||
+          food.image ||
+          (food.name.toLowerCase().includes("cold coffee")
+            ? "https://images.unsplash.com/photo-1461023058943-07fcbe16d735?w=500"
+            : food.name.toLowerCase().includes("crispy chicken")
+              ? "https://images.unsplash.com/photo-1626082927389-6cd097cdc6ec?w=500"
+              : ""),
+      };
+    });
+    const filteredFood = foodWithImages.filter((item) => {
       const matchesSearch = item.name
         .toLowerCase()
         .includes(search.toLowerCase());
@@ -2786,16 +3682,6 @@ export default function Index() {
               <Text style={styles.offerDescription}>
                 Freshly prepared just for you.
               </Text>
-
-              <TouchableOpacity
-                style={styles.orderButton}
-                onPress={() => {
-                  addToCart(FOOD[0]);
-                  setScreen("cart");
-                }}
-              >
-                <Text style={styles.orderButtonText}>ORDER NOW</Text>
-              </TouchableOpacity>
             </View>
 
             <Image source={{ uri: FOOD[0].image }} style={styles.offerImage} />
