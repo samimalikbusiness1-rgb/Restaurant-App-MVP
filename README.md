@@ -147,3 +147,11 @@ database can be integrated in a future version for persistent multi-device data.
 • Push notifications.
 • Restaurant inventory management.
 • Sales analytics and reporting.
+
+
+## 🔑 Demo Login Credentials
+
+| **Role** | **Email** | **Password** |
+|---|---|---|
+| Customer | customer@biteclub.com | Customer123! |
+| Manager | `MANAGER_EMAIL` | `MANAGER_PASSWORD` |
