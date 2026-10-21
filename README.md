@@ -1,149 +1,183 @@
-## RESTAURANT APP MVP
+# 🍽️ Bite Club — Restaurant App FULL STACK (Assignment#02)
 
-## 1. IntroductioN
-Bite Club is a mobile restaurant application designed to provide customers with a simple and modern digital restaurant
-experience. The MVP is developed using React Native and Expo and focuses on the main customer ordering,
-reservation, profile, and manager workflows.
-## Purpose
-This Software Requirements Specification defines the functional and non-functional requirements of the Bite Club
-Restaurant App MVP. It serves as a reference for development, testing, demonstration, and evaluation.
-## Scope
-• Customer login and signup.
-• Home screen and restaurant menu browsing.
-• Food search and category filtering.
-• Favorites management.
-• Shopping cart and checkout.
-• Order placement and order tracking.
-• Table reservation.
-• Customer profile and theme settings.
-• Manager dashboard and order management.
+Bite Club is a restaurant application developed using React Native (Expo), Node.js, Express.js, and MongoDB. The application allows customers to explore food items, manage their cart, place orders, and make table reservations. It also includes a manager role for managing menu items and orders.
 
-## 2. Overall Description
-The application provides two main user roles: Customer and Manager. Customers can browse food, manage their cart,
-place orders, track orders, reserve tables, and manage their profile. Managers can view restaurant information, orders,
-reservations, menu information, sales information, and update order status.
+## 🚀 Tech Stack
 
-## User Classes
-Role
-Capabilities
-Customer
-Login/signup, browse menu, search, favorites, cart, checkout, orders, tracking, reservations, profile.
-Manager
-Dashboard, order overview, status updates, menu overview, sales overview, reservation overview.
+| Layer             | Technology                      |
+| ----------------- | ------------------------------- |
+| Mobile App        | React Native, Expo              |
+| Backend           | Node.js, Express.js             |
+| Database          | MongoDB Atlas / MongoDB Compass |
+| Authentication    | JWT (JSON Web Token)            |
+| Password Security | bcrypt                          |
+| API Testing       | Thunder Client                  |
+| Development Tools | Visual Studio Code, PowerShell  |
 
-## 3. Functional Requirements
-ID
-Requirement
+## ✨ Features
 
-The system shall provide Login and Signup screens with basic field validation.
-The system shall display restaurant food items and categories.
-The system shall allow users to search for food items.
-The system shall allow users to add and remove food items from Favorites.
-The system shall allow users to add items to the cart and change quantities.
-The system shall calculate cart subtotal, discount, charges, and final total where applicable.
+### 👤 Customer Features
 
-The system shall allow customers to place an order and view order details.
-The system shall provide order tracking with different order-status stages.
-The system shall allow customers to reserve a table using date, time, guests, and table selection.
-The system shall provide profile editing, theme switching, and logout.
-The system shall provide a Manager Dashboard.
-ID
-FR-12
-Requirement
-The manager shall be able to view orders and update order status.
+- Customer registration and login
+- JWT-based authentication
+- Browse available food items
+- Add and remove items from the cart
+- Update item quantities
+- View subtotal, delivery charges, and total amount
+- Place food orders
+- Select payment methods: Cash on Delivery, Card, Easypaisa, and JazzCash
+- View personal order history
+- Cancel pending orders
+- Check table availability
+- Make and cancel table reservations
+- View and update profile information
 
-## 4. Detailed Modules
-## Authentication
-• Login and Signup screens shall be available.
-• Required fields shall be validated.
-• The application shall support customer and manager role behavior.
+### 👨‍💼 Manager Features
 
-## Home and Menu
-• The home screen shall provide access to the restaurant menu.
-• Food items shall be displayed with relevant information such as name, price, category, and availability.
-• Users shall be able to browse categories and search for items.
+- Manager login with role-based access
+- Add new food items
+- Update existing menu items
+- Delete menu items
+- View all customer orders
+- Update order status
+- Manage restaurant orders through the manager dashboard
 
-## Favorites
-• Users shall be able to mark food items as favorites.
-• Users shall be able to remove items from favorites.
+## 🗂️ Project Structure
 
-## Cart and Checkout
-• Users shall be able to add food items to the cart.
-• Users shall be able to increase or decrease item quantities.
-• Users shall be able to remove items.
-• The checkout screen shall display order summary and total amount.
-• Promotional discount handling may be supported.
+bite-club/
+│
+├── src/
+│ └── app/
+│ └── index.tsx
+│
+├── server/
+│ ├── config/
+│ ├── middleware/
+│ ├── models/
+│ ├── routes/
+│ │ ├── auth.js
+│ │ ├── menu.js
+│ │ ├── orders.js
+│ │ └── reservation.js
+│ ├── .env
+│ ├── package.json
+│ └── server.js
+│
+└── README.md
 
-## Orders and Tracking
-• A customer shall be able to place an order.
-• The application shall display order details.
-• The customer shall be able to track the order status.
-• The manager shall be able to update order status.
-## Table Reservation
-• Customers shall select a reservation date.
-• Customers shall select a time.
-• Customers shall select number of guests.
-• Customers shall select an available table.
-• Confirmed reservation information shall be shown to the customer.
-## Profile
-• Users shall be able to view and edit profile information.
-• Users shall be able to switch between light and dark themes.
-• Users shall be able to log out.
+## ⚙️ Installation & Setup
 
-## Manager Dashboard
-• Dashboard shall show Total Orders.
-• Dashboard shall show Total Sales.
-• Dashboard shall show Menu Items.
-• Dashboard shall show Reservations.
-• Dashboard shall provide order management and status controls.
+### 1. Install Frontend Dependencies
 
-## 
-The application should run through the Expo development environment.
-The MVP shall not expose real credentials or sensitive production information.
-Text, buttons, and controls should remain readable and understandable.
+npm install
 
-## Application Navigation
-• Welcome / Authentication
-• Home
-• Menu / Food Categories
-• Favorites
-• Cart
-• Checkout
-• Order Confirmation
-• Order Tracking
-• Reservation
-• Profile
-• Edit Profile
-• Manager Dashboard
+### 2. Install Backend Dependencies
 
-## Data Requirements
-For the frontend MVP, application data may be maintained locally or in application state. The main logical entities are
-User, MenuItem, Favorite, CartItem, Order, OrderItem, Reservation, Table, Promotion, and Manager. A backend
-database can be integrated in a future version for persistent multi-device data.
+cd server
+npm install
 
-## Constraints and Assumptions
-• This document describes the frontend MVP.
-• Real payment processing is outside the current scope.
-• Real restaurant inventory synchronization is outside the current scope.
-• Real-time multi-device synchronization requires a backend.
-• The application is intended for academic demonstration and evaluation.
+### 3. Configure Environment Variables
 
-## Acceptance Criteria
-• The application launches successfully in Expo.
-• A customer can navigate through the main screens.
-• A customer can browse, search, favorite, and add food items to the cart.
-• Cart quantities and totals update correctly.
-• A customer can place an order and view its tracking status.
-• A customer can create and view a table reservation.
-• A customer can edit profile information and switch themes.
-• A manager can open the Manager Dashboard.
-• A manager can view orders and update their status.
+PORT=5000
+MONGODB_URI=mongodb connection string
+ADMIN_NAME=Restaurant Manager
+ADMIN_EMAIL=manager email
+ADMIN_PASSWORD=manager password
 
-## Future Enhancements
-• Backend API and database integration.
-• Real authentication and authorization.
-• Online payment gateway.
-• Real-time order synchronization.
-• Push notifications.
-• Restaurant inventory management.
-• Sales analytics and reporting.
+### 4. Start the Backend Server
+
+npm run dev
+
+The backend runs at:
+
+http://localhost:5000
+
+Health check endpoint:
+
+http://localhost:5000/api/health
+
+### 5. Start the Expo App
+
+Open second terminal:
+npx expo start
+
+Scan the QR code using Expo Go to run the application on your phone.
+
+## 🗄️ Database
+
+The database supports:
+
+- User accounts and authentication
+- Food menu items
+- Customer orders
+- Table reservations
+- Restaurant table availability
+
+## 🚪 Login Credentials
+
+| **Role** | **Email**             | **Password** |
+| -------- | --------------------- | ------------ |
+| Customer | customer@biteclub.com | Password123  |
+| Manager  | manager@gmail.com     | Password123  |
+
+## 📡 API Endpoints
+
+Base URL:
+http://localhost:5000
+
+### 🔑 Authentication —
+
+| Method | Endpoint           | Description         |
+| ------ | ------------------ | ------------------- |
+| POST   | `/api/auth/signup` | Register a customer |
+| POST   | `/api/auth/login`  | Log in a user       |
+
+### 🍔 Menu —
+
+| Method | Endpoint        | Access  | Description              |
+| ------ | --------------- | ------- | ------------------------ |
+| GET    | `/api/menu`     | Public  | Get available menu items |
+| POST   | `/api/menu`     | Manager | Add a food item          |
+| PATCH  | `/api/menu/:id` | Manager | Update a food item       |
+| DELETE | `/api/menu/:id` | Manager | Delete a food item       |
+
+### 🛒 Orders —
+
+| Method | Endpoint                 | Access        | Description                      |
+| ------ | ------------------------ | ------------- | -------------------------------- |
+| POST   | `/api/orders`            | Authenticated | Place a new order                |
+| GET    | `/api/orders/my`         | Authenticated | Get the logged-in user's orders  |
+| GET    | `/api/orders`            | Manager       | Get all customer orders          |
+| PATCH  | `/api/orders/:id/cancel` | Authenticated | Cancel an eligible pending order |
+| PATCH  | `/api/orders/:id/status` | Manager       | Update an order's status         |
+
+Available order statuses include `Pending`, `Preparing`, `Ready`, `Served`, and `Cancelled`.
+
+### 📅 Reservations
+
+| Method | Endpoint                                       | Access | Description                                              |
+| ------ | ---------------------------------------------- | ------ | -------------------------------------------------------- |
+| GET    | `/api/reservations/availability`               | Public | Check available tables for a date, time, and guest count |
+| POST   | `/api/reservations`                            | Public | Create a table reservation                               |
+| GET    | `/api/reservations/tables/status`              | Public | Get the status of restaurant tables                      |
+| PATCH  | `/api/reservations/tables/:tableNumber/status` | Public | Update a table's status                                  |
+| POST   | `/api/reservations/cancel`                     | Public | Cancel a reservation                                     |
+| GET    | `/api/reservations`                            | Public | Get all reservations                                     |
+
+## 🧪 API Testing
+
+The backend APIs can be tested using Postman or Thunder Client.
+
+1. Start the backend server.
+2. Test `GET /api/health`.
+3. Register a customer using `POST /api/auth/signup`.
+4. Log in using `POST /api/auth/login`.
+5. Use the returned JWT token for protected endpoints.
+6. Retrieve menu items using `GET /api/menu`.
+7. Test order creation and order history.
+8. Test reservation availability and table booking.
+9. Log in as a manager to test menu management and order status updates.
+
+## 💳 Payment Information
+
+The application provides payment-method selection for Cash on Delivery, Card, Easypaisa, and JazzCash. Selecting a payment method does not itself process an online payment; a payment gateway integration would be required for real transactions.
