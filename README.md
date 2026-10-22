@@ -46,9 +46,6 @@ Bite Club is a restaurant application developed using React Native (Expo), Node.
 ## 🗂️ Project Structure
 
 ```text
-## 🗂️ Project Structure
-
-```text
 bite-club/
 │
 ├── src/
